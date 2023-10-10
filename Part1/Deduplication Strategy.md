@@ -17,7 +17,7 @@ We want to output one SAM file, which should be similar to the input SAM file, w
 ### Initial Notes
 As SAM files can be prohibitively large (millions of alignment lines), we cannot simply store all the alignments in memory, contained in some data structure, and identify which alignments are PCR duplicates from there. We would prefer to develop a streaming algorithm, where we can examine one line at a time (or a sliding window of lines) and decide whether or not to retain that alignment. 
 
-One strategy for doing so is to ensure that potential PCR duplicates are sequential in our SAM file: we can then iterate through duplicate alignment lines until we reach a non-duplicate, select and write out one of our duplicate alignments, and continue iterating. Assuming that numbers of any single PCR replicate are relatively low, this prevents memory issues. At first glance, `samtools sort` seems to provide our desired input. However, soft clipping and strandedness introduce several scenarios where PCR duplicates may not be apparent *or sequential*.
+One strategy for doing so is to ensure that potential PCR duplicates are sequential in our SAM file: we can then iterate through duplicate alignment lines until we reach a non-duplicate, select and write out one of our duplicate alignments, and continue iterating (or only store and write out one duplicate, if we don't want to allow a choice of duplicates). Assuming that numbers of any single PCR duplicate are relatively low, this prevents memory issues. At first glance, `samtools sort` seems to provide our desired input. However, soft clipping and strandedness introduce several scenarios where PCR duplicates may not be apparent *or sequential*.
 
 Soft clipping is a feature of the SAM format specification. The `POS` field gives the 1-based leftmost mapping position for the alignment, but this is not necessarily the starting position of the sequencing read, only the starting position of the aligned bases relative to the 5' end of the reference chromosome. At the beginning and end of the string in the `CIGAR` field, we can recover encoded counts for how many bases did not align from the start or the end of the read. Soft-clipped bases are not accounted for by `POS`.
 
@@ -46,10 +46,67 @@ Lines 1 and 2 are potential duplicates! The sequencing reads would have started 
 The first two phases of this proposed process account for these cases to create an intermediate file with a more ideal ordering of alignment lines; the third phase processes this intermediate file into our final output.
 
 ### Phase 1: Adjusting Input
++ Open the input SAM file.
++ Open an intermediate output SAM file.
++ Read over each line of the input SAM file.
++ If the line starts with `@`, write it to the intermediate file.
++ Otherwise, we have an alignment line.
+  + Split the line by tabs and store it in a list.
+  + If the 0x4 bit of the `FLAG` field is set, continue on to the next line. We can't make any assumptions about unmapped reads, and we may as well check for them early.
+  + Append the value in the `POS` field to the `QNAME` field, separating it from the rest of that string with a colon. We're about to edit the POS field, so this step will let us store the original value to retrieve later.
+  + If the 0x10 bit of the `FLAG` field is unset:
+    + The read is not reverse complemented.
+    + Check for soft clipping by examining the `CIGAR` field. For these 'forward' reads, we want to see if there are any soft-clipped bases at the start of the `CIGAR` string. Regular expression: `^([0-9]+H)?([0-9]+)S`.
+    + Take the value in the `POS` field. Subtract the amount of soft-clipped bases at the start of the `CIGAR` field, if any, and store that value back in the `POS` field.
+    + Write the line to the intermediate file.
+    + Continue to the next line.
+  + Otherwise, if the 0x10 bit of the `FLAG` field is set:
+    + The read is being reverse complemented.
+    + Check for soft clipping by examining the `CIGAR` field. We actually still only need the amount of soft-clipped bases at the start of the `CIGAR` string.
+    + Take the value in the `POS` field. Subtract the amount of soft-clipped bases at the start of the `CIGAR` field. Add the length of the string in the `SEQ` field. Subtract 1. Store that value back in the `POS` field.
+    + Write the line to the intermediate file.
+    + Continue to the next line.
++ When there are no lines left to read in the input SAM file, close both files.
 ### Phase 2: Resorting
++ Run `samtools sort` on our intermediate file. Specify an output SAM file.
++ We haven't violated any formatting rules (just made the content temporarily inaccurate), so this should be possible. Potential PCR duplicates should now be next to each other. 
 ### Phase 3: Filtering
 #### 3a: UMI Storage
++ Create a set to store UMIs.
++ Open the input list of UMIs.
++ Read each line of the file.
++ Add the contents of each line to the set.
++ Close the file with the list of UMIs.
 #### 3b: Writing Output
++ Create an empty list to store an alignment line.
++ Open the output from Phase 2.
++ Open a final output SAM file.
++ Read each line of the Phase 2 file.
++ If the line starts with `@`, write it to the final output SAM file.
++ Otherwise, we have an alignment line.
++ Split the line into a list by tabs.
++ If this is the first alignment line we see:
+  + Store it in the list we made earlier.
+  + Continue to the next line.
++ If this is not the first alignment line:
+  + If all of the following are true:
+    + This line and the stored line have the same UMI,
+    + This line and the stored line have the same value in the `POS` field,
+    + This line and the stored line have the same value in the `RNAME` field,
+    + The 0x10 bits in this line's `FLAG` and the stored line's `FLAG` are either both set or both unset,
+    + Do not store this line. Continue to the next line.
+  + If any of those conditions were not met:
+    + Replace the value in the stored line's `POS` field with the value we appended to the `QNAME`.
+    + Remove that value (and the colon we added) from the `QNAME` field of the stored line.
+    + Write the stored alignment line to our final output file.
+    + Replace the stored line with the current line.
+    + Continue to the next line.
++ If there are no more lines in the file:
+  + Replace the value in the stored line's `POS` field with the value we appended to the `QNAME`.
+  + Remove that value (and the colon we added) from the `QNAME` field of the stored line.
+  + Write the stored alignment line to our final output file.
++ Close all open files.
 #### 3c: Cleanup
++ Delete all intermediate files.
 
 ## Necessary Helper Functions
