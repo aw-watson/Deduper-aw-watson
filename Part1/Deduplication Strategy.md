@@ -53,6 +53,7 @@ The first two phases of this proposed process account for these cases to create 
 + Otherwise, we have an alignment line.
   + Split the line by tabs and store it in a list.
   + If the 0x4 bit of the `FLAG` field is set, continue on to the next line. We can't make any assumptions about unmapped reads, and we may as well check for them early.
+  + If the UMI isn't in the set of known UMIs, continue on to the next line.
   + Append the value in the `POS` field to the `QNAME` field, separating it from the rest of that string with a colon. We're about to edit the POS field, so this step will let us store the original value to retrieve later.
   + If the 0x10 bit of the `FLAG` field is unset:
     + The read is not reverse complemented.
