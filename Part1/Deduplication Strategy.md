@@ -7,7 +7,7 @@ Two sequences are PCR duplicates if all of the following are true:
 + The sequences align to the same chromosome
 + The sequences correspond to the same strand of the reference chromosome
 + The sequences have the same 5' start position relative to the reference chromosome
-  + **Note that this requirement must take strandedness and soft clipping into account (see [Initial Notes]()).**
+  + **Note that this requirement must take strandedness and soft clipping into account (see [Initial Notes](#initial-notes)).**
 
 ## Input
 We have two files as input: a list of 96 UMIs, and a sorted SAM file. `samtools sort`, by default, sorts first on the `RNAME` field (chromosome), then on the `POS` field (1-based leftmost mapping position).
@@ -90,11 +90,11 @@ The first two phases of this proposed process account for these cases to create 
   + Continue to the next line.
 + If this is not the first alignment line:
   + If all of the following are true:
-    + This line and the stored line have the same UMI,
-    + This line and the stored line have the same value in the `POS` field,
-    + This line and the stored line have the same value in the `RNAME` field,
-    + The 0x10 bits in this line's `FLAG` and the stored line's `FLAG` are either both set or both unset,
-    + Do not store this line. Continue to the next line.
+    + This line and the stored line have the same UMI
+    + This line and the stored line have the same value in the `POS` field
+    + This line and the stored line have the same value in the `RNAME` field
+    + The 0x10 bits in this line's `FLAG` and the stored line's `FLAG` are either both set or both unset
+  + Do not store this line. Continue to the next line.
   + If any of those conditions were not met:
     + Replace the value in the stored line's `POS` field with the value we appended to the `QNAME`.
     + Remove that value (and the colon we added) from the `QNAME` field of the stored line.
