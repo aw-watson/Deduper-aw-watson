@@ -111,3 +111,43 @@ The first two phases of this proposed process account for these cases to create 
 + Delete all intermediate files.
 
 ## Necessary Helper Functions
+```python
+def validate_umi(alignment: list) -> bool:
+  '''
+  Checks to see if an (unedited) alignment line has an UMI that appears in our list of valid UMIs. Returns True if the UMI is valid, False otherwise.
+  '''
+  Input Example:
+  ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC", "0", "2", "76814284", "36", "71M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
+  Output Example: True
+
+```
+
+
+```python
+def adjust_pos(alignment: list):
+  '''
+  Edits the value corresponding to the POS field to account for soft clipping. Stores the old position in the first field (QNAME).
+  '''
+  Input Example:  ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC", "0", "2", "76814284", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
+  End State Example: ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC:76814284", "0", "2", "76814282", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
+```
+
+```python
+def restore_pos(alignment: list):
+  '''
+  The reciprocal operation of adjust_pos(). Takes an edited alignment line, strips the original POS value off of the first field, and uses it to replace the edited POS value.
+  '''
+  Input Example:  ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC:76814284", "0", "2", "76814282", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
+  End State Example: ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC", "0", "2", "76814284", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
+
+```
+
+```python
+def detect_duplicate(a1: list, a2:list) -> bool:
+  '''
+  Returns True if the two (adjusted) alignments are duplicates, False if they aren't.
+  '''
+  Input Example:
+  Output Example: True
+
+```
