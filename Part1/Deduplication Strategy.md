@@ -54,23 +54,22 @@ The first two phases of this proposed process account for these cases to create 
   + Split the line by tabs and store it in a list.
   + If the 0x4 bit of the `FLAG` field is set, continue on to the next line. We can't make any assumptions about unmapped reads, and we may as well check for them early.
   + If the UMI isn't in the set of known UMIs, continue on to the next line.
-  + Append the value in the `POS` field to the `QNAME` field, separating it from the rest of that string with a colon. We're about to edit the POS field, so this step will let us store the original value to retrieve later.
+  + Append an element to the list, with format `OP:i:<value in the POS field>`. This will store our original position so we can restore it later.
   + If the 0x10 bit of the `FLAG` field is unset:
     + The read is not reverse complemented.
-    + Check for soft clipping by examining the `CIGAR` field. For these 'forward' reads, we want to see if there are any soft-clipped bases at the start of the `CIGAR` string. Regular expression: `^([0-9]+H)?([0-9]+)S`.
+    + Check for soft clipping by examining the `CIGAR` field. For these 'forward' reads, we want to see if there are any soft-clipped bases at the start of the `CIGAR` string.
     + Take the value in the `POS` field. Subtract the amount of soft-clipped bases at the start of the `CIGAR` field, if any, and store that value back in the `POS` field.
     + Write the line to the intermediate file.
     + Continue to the next line.
   + Otherwise, if the 0x10 bit of the `FLAG` field is set:
     + The read is being reverse complemented.
-    + Check for soft clipping by examining the `CIGAR` field. We actually still only need the amount of soft-clipped bases at the start of the `CIGAR` string.
-    + Take the value in the `POS` field. Subtract the amount of soft-clipped bases at the start of the `CIGAR` field. Add the length of the string in the `SEQ` field. Subtract 1. Store that value back in the `POS` field.
+    + Check for soft clipping by examining the `CIGAR` field. Ignore any soft-clipped bases at the *start* of the string, but add all other base counts (including soft-clipped bases at the end) to the value in the `POS` field. Subtract 1. Store that value back in the `POS` field.
     + Write the line to the intermediate file.
     + Continue to the next line.
 + When there are no lines left to read in the input SAM file, close both files.
 ### Phase 2: Resorting
 + Run `samtools sort` on our intermediate file. Specify an output SAM file.
-+ We haven't violated any formatting rules (just made the content temporarily inaccurate), so this should be possible. Potential PCR duplicates should now be next to each other. 
++ Potential PCR duplicates should now be next to each other. 
 ### Phase 3: Filtering
 #### 3a: UMI Storage
 + Create a set to store UMIs.
@@ -97,14 +96,14 @@ The first two phases of this proposed process account for these cases to create 
     + The 0x10 bits in this line's `FLAG` and the stored line's `FLAG` are either both set or both unset
   + Do not store this line. Continue to the next line.
   + If any of those conditions were not met:
-    + Replace the value in the stored line's `POS` field with the value we appended to the `QNAME`.
-    + Remove that value (and the colon we added) from the `QNAME` field of the stored line.
+    + Replace the value in the stored line's `POS` field with the value we used to create the `OP` tag.
+    + Remove that field from the stored line.
     + Write the stored alignment line to our final output file.
     + Replace the stored line with the current line.
     + Continue to the next line.
 + If there are no more lines in the file:
-  + Replace the value in the stored line's `POS` field with the value we appended to the `QNAME`.
-  + Remove that value (and the colon we added) from the `QNAME` field of the stored line.
+  + Replace the value in the stored line's `POS` field with the value we used to create the `OP` tag.
+  + Remove that field from the stored line.
   + Write the stored alignment line to our final output file.
 + Close all open files.
 #### 3c: Cleanup
@@ -114,7 +113,7 @@ The first two phases of this proposed process account for these cases to create 
 ```python
 def validate_umi(alignment: list) -> bool:
   '''
-  Checks to see if an (unedited) alignment line has an UMI that appears in our list of valid UMIs. Returns True if the UMI is valid, False otherwise.
+  Checks to see if an alignment line has an UMI that appears in our list of valid UMIs. Returns True if the UMI is valid, False otherwise.
   '''
   Input Example:
   ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC", "0", "2", "76814284", "36", "71M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
@@ -126,18 +125,18 @@ def validate_umi(alignment: list) -> bool:
 ```python
 def adjust_pos(alignment: list):
   '''
-  Edits the value corresponding to the POS field to account for soft clipping. Stores the old position in the first field (QNAME).
+  Edits the value corresponding to the POS field to account for soft clipping. Stores the old position in a valid SAM format tag.
   '''
   Input Example:  ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC", "0", "2", "76814284", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
-  End State Example: ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC:76814284", "0", "2", "76814282", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
+  End State Example: ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC", "0", "2", "76814282", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU", OP:i:76814284]
 ```
 
 ```python
 def restore_pos(alignment: list):
   '''
-  The reciprocal operation of adjust_pos(). Takes an edited alignment line, strips the original POS value off of the first field, and uses it to replace the edited POS value.
+  The reciprocal operation of adjust_pos(). Restores the original `POS` field of a read.
   '''
-  Input Example:  ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC:76814284", "0", "2", "76814282", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
+  Input Example:  ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC", "0", "2", "76814282", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU", OP:i:76814284]
   End State Example: ["NS500451:154:HWKTMBGXX:1:11101:24260:1121:CTGTTCAC", "0", "2", "76814284", "36", "2S69M", "*", "0", "0", "TCCACCACAATCTTACCATCCTTCCTCCAGACCACATCGCGTTCTTTGTTCAACTCACAGCTCAAGTACAA", "6AEEEEEEAEEAEEEEAAEEEEEEEEEAEEAEEAAEE<EEEEEEEEEAEEEEEEEAAEEAAAEAEEAEAE/", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU"]
 
 ```
@@ -147,7 +146,9 @@ def detect_duplicate(a1: list, a2:list) -> bool:
   '''
   Returns True if the two (adjusted) alignments are duplicates, False if they aren't.
   '''
-  Input Example:
+  Input Example: ["SD1:GGAATTGG", "0", "4", "60763291", "36", "52M16388N19M", "*", "0", "0", "CTCTTTTTCTGTCCTCCATCCGCAAACTTGCACAGTAAAGGTTCTGTAGGAGCAGAAACTCCTGGTGGGGT", "6AEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEE", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU", "XS:A:-", "XG:Z:A", "OP:i:60763291"],
+ ["SD2:GGAATTGG", "0", "4", "60763291", "36", "52M16388N19M", "*", "0", "0", "CTCTTTTTCTGTCCTCCATCCGCAAACTTGCACAGTAAAGGTTCTGTAGGAGCAGAAACTCCTGGTGGGGT", "6AEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEE", "MD:Z:71", "NH:i:1", "HI:i:1", "NM:i:0", "SM:i:36", "XQ:i:40", "X2:i:0", "XO:Z:UU", "XS:A:-", "XG:Z:A", "OP:i:60763291"]
+
   Output Example: True
 
 ```
