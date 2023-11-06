@@ -5,7 +5,7 @@ import argparse
 import re
 
 def get_args():
-    parser = argparse.ArgumentParser(description = "Deduplicate aligned single-end reads from a SAM file")
+    parser = argparse.ArgumentParser(description = "Deduplicate aligned single-end reads from a sorted SAM file.")
     parser.add_argument("-f", "--file", help="Absolute path to sorted SAM file", required = True)
     parser.add_argument("-o", "--outfile", help="Absolute path to output deduplicated SAM file", required = True)
     parser.add_argument("-u", "--umi", help = "File containing list of valid UMIs", required = True)
