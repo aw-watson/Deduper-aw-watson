@@ -50,8 +50,7 @@ bad_mapping_ctr: int = 0
 duplicate_ctr: int = 0
 non_dupe_ctr: int = 0
 first_alignment: bool = True
-comparing_rev: bool = False
-comparing_umi: str = ""
+same_pos_alignments: dict[tuple[str,bool],list[str]] = {}
 
 #open files
 out = open(outfile, "wt")
@@ -63,8 +62,10 @@ while(True):
     #end of file:
     if line == "":
         #write out our last stored non-header line
-        if len(comparing_mol) != 0:
-            out.write("\t".join(comparing_mol) + "\n")
+        for al in same_pos_alignments.values():
+            non_dupe_ctr += 1
+            restore_pos(al)
+            out.write("\t".join(al) + "\n")
         break
     
     #header lines:
@@ -87,49 +88,46 @@ while(True):
         bad_umi_ctr += 1
         continue
 
-    #grab first alignment line and store it for future comparisons
-    if first_alignment:
-        non_dupe_ctr += 1
-        first_alignment = False
-        comparing_mol = alignment
-        comparing_rev = int(comparing_mol[1]) & 16 == 16 
-        comparing_umi = umi
-        continue
-
-    
     #get strandedness of most recently read alignment line
     rev: bool = int(alignment[1]) & 16 == 16
 
-    if(rev == comparing_rev
-       and umi == comparing_umi
-       and alignment[2] == comparing_mol[2]
-       and alignment[3] == comparing_mol[3]):
-        #we have a duplicate
-        duplicate_ctr += 1
-        match mode:
-            case "first":
-                #ignore all duplicates after the first, don't write them out
-                pass
-            case "last":
-                #always replace stored alignment line with the most recent duplicate
-                comparing_mol = alignment
-                #strandedness and umi convenience variables don't need to be updated, since they're guaranteed to remain the same
-            case "best":
-                #replace stored alignment line if the current duplicate has a known, superior mapping quality 
-                if int(alignment[4] != 255) and int(alignment[4]) > int(comparing_mol[4]):
-                    comparing_mol = alignment
-            case _:
-                raise ValueError("Invalid option given for \"mode\"")
-    else:
-        #non-duplicate
-        non_dupe_ctr += 1
-        #write out stored alignment line
-        restore_pos(comparing_mol)
-        out.write("\t".join(comparing_mol) + "\n")
-        #store new non-duplicate alignment line to check /it/ for duplicates
+    #grab first alignment line and store it for future comparisons
+    if first_alignment:
+        first_alignment = False
         comparing_mol = alignment
-        comparing_rev = int(comparing_mol[1]) & 16 == 16
-        comparing_umi = umi
+        same_pos_alignments[(umi, rev)] = comparing_mol
+        continue
+
+
+    if(alignment[2] == comparing_mol[2]
+       and alignment[3] == comparing_mol[3]):
+        #we are in a stretch of potential duplicates (same position and chromosome)
+        if (umi, rev) not in same_pos_alignments:
+            same_pos_alignments[(umi,rev)] = alignment
+        else:
+            duplicate_ctr += 1
+            match mode:
+                case "first":
+                    pass
+                case "last":
+                    same_pos_alignments[(umi,rev)] = alignment
+                case "best":
+                    if int(alignment[4] != 255 and int(alignment[4]) > int(same_pos_alignments[(umi,rev)][4])):
+                        same_pos_alignments[(umi,rev)] = alignment
+                case _:
+                    raise ValueError("Invalid option given for \"mode\"")
+    else:
+        #we are out of a stretch of potential duplicates
+        #write out all non-duplicate reads with that value and position
+        for al in same_pos_alignments.values():
+            non_dupe_ctr += 1
+            restore_pos(al)
+            out.write("\t".join(al) + "\n")
+        #reset dictionary
+        same_pos_alignments.clear()
+        #start tracking new position and chromosome
+        same_pos_alignments[(umi,rev)] = alignment
+        comparing_mol = alignment
 
 #close files
 out.close()

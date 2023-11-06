@@ -3,6 +3,7 @@
 #SBATCH --partition=bgmp               #REQUIRED: which partition to use
 #SBATCH --cpus-per-task=1                 #optional: number of cpus, default is 1
 #SBATCH --mem=8GB                        #optional: amount of memory, default is 4GB
+#SBATCH --time=1-00:00:00
 #SBATCH --output=/projects/bgmp/apwat/bioinfo/Bi624/Deduper-aw-watson/logs/deduping_choice_out%j.log
 #SBATCH --error=/projects/bgmp/apwat/bioinfo/Bi624/Deduper-aw-watson/logs/deduping_choice_err%j.log
 conda activate deduper
@@ -20,4 +21,4 @@ samtools sort -o $DIR/input/C1_SE_uniqAlign_sorted.sam $DIR/input/C1_SE_uniqAlig
     -u STL96.txt \
     -f $DIR/input/C1_SE_uniqAlign_sorted.sam \
     -o $DIR/output/C1_SE_uniqAlign_deduped.sam \
-    -m first
+    -m best
